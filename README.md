@@ -102,3 +102,54 @@ Actors **MUST** be authoritative over Resource state. All validation, merge sema
 Resource access **MUST** be capability-based. Possession of a valid Resource identifier and corresponding cryptographic material is sufficient to attempt access. Base Stations **MUST** require protocol-defined authentication steps but **MUST NOT** gain knowledge of Resource semantics as a result.
 
 Resources **MAY** reference other Resources only by identifier. Any such relationships **MUST** be interpreted solely by Actors and remain opaque to Base Stations.
+
+## Actor Roles and Authorization Model (Normative)
+
+z-base defines role-based authorization for Resources. Roles determine the actions a given Actor is permitted to perform on a Resource. Authorization MUST be enforced by Actors at the time operations are applied and merged; Base Stations MUST NOT enforce role permissions.
+
+Defined Roles
+
+Actors MUST be assigned one of the following roles for each Resource:
+
+Owner — Full control over the Resource, including transferring ownership and granting or revoking other roles.
+
+Manager — Permission to grant and revoke Editor and Viewer roles, but MUST NOT change Owner.
+
+Editor — Permission to produce CRDT operations that modify state fields of the Resource.
+
+Viewer — Read-only; MUST NOT produce state-modifying operations.
+
+Revoked — No read or write access; reads are masked to an initial or null state, and write operations are rejected.
+
+These roles and their permissions MUST be enforced by any Actor that merges operations into a Resource Snapshot. Roles MUST be verifiable via cryptographic evidence attached to each operation.
+
+Role Keys and Verification
+
+Each role MUST be associated with verifiable key material. Actors MUST sign operations with the key corresponding to their assigned role for the Resource.
+Actors MUST NOT sign operations with key material for roles they do not hold.
+
+Role keys MUST be included in the Resource Snapshot in a way that Actors can verify signatures against the ACL. Actors MUST NOT accept operations whose signatures cannot be verified against the stored role key for that Actor’s identity at the operation’s timestamp.
+
+Authorization Enforcement
+
+When an Actor produces a CRDT operation:
+
+The operation MUST include a detached cryptographic signature using the Actor’s current role key.
+
+The operation MUST include sufficient metadata to determine the targeted Resource and intended CRDT change.
+
+When an Actor merges operations into a local replica:
+
+The Actor MUST verify the signature of each operation against the role key recorded in the Resource Snapshot at the operation’s causal timestamp.
+
+If verification fails or the role does not permit the attempted operation type, the Actor MUST reject that operation from the merge.
+
+Rejection due to unauthorized role MUST NOT prevent merging of other valid operations.
+
+Actors MAY update the ACL by producing CRDT operations that change role assignments, subject to role permissions: Owners MUST be able to assign or revoke any role; Managers MUST be able to assign or revoke Editor and Viewer roles but not Owner.
+
+Role Transition Rules
+
+Role transitions MUST be expressible as signed operations within the Resource Snapshot. Authoritative state after merge MUST reflect the most recent valid role assignment.
+
+An Actor’s effective role for a Resource is defined by the state of the ACL as determined by merged, verifiably signed operations up to the current snapshot.
