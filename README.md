@@ -54,3 +54,10 @@ A mode of operation in which Actors are able to read and mutate state without ne
 
 **Eventual Consistency**
 A property whereby independent Actor replicas, given sufficient time and communication, converge to equivalent authoritative state.
+
+## Architecture Overview (Non-Normative)
+
+z-base follows an actor-authoritative architecture where all meaningful state interpretation, validation, and conflict resolution occur within Actors, not the service.
+Base Stations operate solely as opaque data relays and persistence nodes, handling encrypted envelopes without semantic insight or linkage capability.
+Actors interact with Base Stations using high-entropy identifiers and authenticated sessions to fetch, publish, and relay encrypted blobs, while maintaining full local replicas for offline-first operation.
+Synchronization advances state incrementally, such that each step reveals only the next discoverable resource, ensuring unlinkability and minimizing observable metadata.
