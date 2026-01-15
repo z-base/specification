@@ -10,7 +10,7 @@ The contents may change at any time without notice, including normative requirem
 This specification is AI-assisted and authored with contributions from Jori Lehtinen and GPT-5.2.
 Feedback and discussion are encouraged, but implementations should expect breaking changes until this document reaches a finalized status.
 
-### Conformance
+## Conformance
 
 This specification defines conformance requirements for the following roles:
 
