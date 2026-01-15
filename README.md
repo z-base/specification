@@ -9,3 +9,18 @@ The contents may change at any time without notice, including normative requirem
 
 This specification is AI-assisted and authored with contributions from Jori Lehtinen and GPT-5.2.
 Feedback and discussion are encouraged, but implementations should expect breaking changes until this document reaches a finalized status.
+
+### Conformance
+
+This specification defines conformance requirements for the following roles:
+
+Client Implementation: software executing in a user-controlled environment that creates, verifies, merges, encrypts, decrypts, and authoritatively interprets application state.
+
+Base Station Implementation: a non-authoritative service that stores, relays, and forwards opaque data according to this specification.
+
+The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, and MAY are to be interpreted as described in RFC 2119 and RFC 8174.
+
+An implementation conforms to this specification if and only if it satisfies all normative requirements applicable to its declared role.
+An implementation may conform to one or more roles independently.
+
+Sections explicitly marked as non-normative, as well as examples and notes, are provided for informational purposes only and do not affect conformance.
