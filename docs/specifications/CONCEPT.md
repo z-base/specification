@@ -1,5 +1,5 @@
 
-# z-base — Draft Specification
+# z-base — Concept Specification
 
 ## Abstract
 
