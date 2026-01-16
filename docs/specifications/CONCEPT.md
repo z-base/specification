@@ -2,7 +2,7 @@
 
 ## Abstract
 
-z-base specifies a zero-knowledge state relay and persistence API for browser-based JavaScript Actors. It defines how encrypted, opaque state blobs are created, stored, relayed, and synchronized by a non-authoritative service, while all state validity, authorization, conflict resolution, attribution, and cryptographic verification are performed exclusively by Actors. The model guarantees offline-first operation, eventual consistency, unlinkability of stored data, and cryptographic impostor resistance, such that infrastructure cannot interpret, correlate, decrypt, or falsely attribute application state. This document defines the normative requirements for interoperable Actor and Base Station implementations.
+z-base specifies a zero-knowledge state relay and persistence API for browser-based JavaScript Actors. It defines how encrypted, opaque state blobs are created, stored, relayed, and synchronized by a non-authoritative service, while all state validity, authorization, conflict resolution, attribution, revocation handling, and cryptographic verification are performed exclusively by Actors. The model guarantees offline-first operation, eventual consistency, unlinkability of stored data, cryptographic impostor resistance, and explicit post-revocation data erasure, such that infrastructure cannot interpret, correlate, decrypt, retain, or falsely attribute application state. This document defines the normative requirements for interoperable Actor and Base Station implementations.
 
 ---
 
@@ -23,7 +23,7 @@ This specification defines conformance requirements for two roles:
 
 ### Actor Implementation
 
-Software executing in a user-controlled environment that creates, verifies, merges, encrypts, decrypts, attributes, and authoritatively interprets application state.
+Software executing in a user-controlled environment that creates, verifies, merges, encrypts, decrypts, attributes, revokes, garbage-collects, and authoritatively interprets application state.
 
 ### Base Station Implementation
 
@@ -41,10 +41,10 @@ Sections marked *Non-Normative*, along with examples and walkthroughs, are infor
 ## Terminology
 
 **Actor**  
-A user-controlled software agent that is authoritative over state creation, validation, authorization, attribution, conflict resolution, encryption, and decryption.
+A user-controlled software agent that is authoritative over state creation, validation, authorization, attribution, conflict resolution, revocation handling, encryption, and decryption.
 
 **Base Station**  
-A non-authoritative service that stores, forwards, and relays opaque binary data without the ability to interpret, validate, correlate, decrypt, or attribute it.
+A non-authoritative service that stores, forwards, and relays opaque binary data without the ability to interpret, validate, correlate, decrypt, attribute, or retain semantic meaning.
 
 **Resource**  
 The sole unit of addressable state in z-base, identified by a high-entropy identifier and represented only in encrypted form.
@@ -59,7 +59,7 @@ The encrypted form of a Resource Snapshot, safe for storage, transport, and forw
 A serialized binary representation of an Envelope with no semantic meaning outside an Actor.
 
 **Authoritative State**  
-State whose validity, ordering, authorization, attribution, and merge semantics are determined exclusively by Actors.
+State whose validity, ordering, authorization, attribution, revocation effects, and merge semantics are determined exclusively by Actors.
 
 **Offline-First Operation**  
 A mode in which Actors can read and mutate state without network connectivity, synchronizing opportunistically.
@@ -70,15 +70,18 @@ A property whereby independent Actor replicas converge to equivalent authoritati
 **Actor Identity Key**  
 A persistent cryptographic signing key pair uniquely identifying an Actor instance for attribution and impostor resistance, distinct from role keys.
 
+**Acknowledgment (Ack)**  
+A signed, non-mutating Actor statement attesting that a specific causal state has been locally merged and verified.
+
 ---
 
 ## Architecture Overview *(Non-Normative)*
 
-z-base follows an **actor-authoritative architecture**. All meaningful interpretation, validation, authorization, attribution, and merge logic occurs within Actors. Base Stations act only as opaque persistence and relay nodes and never participate in state semantics.
+z-base follows an **actor-authoritative architecture**. All meaningful interpretation, validation, authorization, attribution, revocation enforcement, and merge logic occurs within Actors. Base Stations act only as opaque persistence and relay nodes and never participate in state semantics.
 
 Actors maintain local replicas of Resource state and interact with Base Stations using high-entropy identifiers and authenticated sessions to publish, retrieve, and relay encrypted Envelopes. All Base Station–handled data remains opaque and unlinkable.
 
-Synchronization proceeds incrementally via encrypted snapshots and deltas. Each step reveals only what is necessary to locate subsequent state, preserving unlinkability while enabling offline-first operation, eventual consistency, and post-hoc verification of authorship.
+Synchronization proceeds incrementally via encrypted snapshots and deltas. State progresses locally first; synchronization is opportunistic, unordered, and tolerant of duplication. Attribution, impostor resistance, garbage collection, and revocation effects are enforced entirely at the Actor layer.
 
 ---
 
@@ -89,7 +92,7 @@ A **Resource** is the sole unit of addressable state in z-base.
 Each Resource **MUST** be identified by a **256-bit high-entropy identifier**, encoded as a **43-character Base64URL string**. The identifier **MUST** be unguessable and **MUST NOT** convey semantic meaning to a Base Station.
 
 A Resource **MUST** be represented exclusively by an **Envelope**, produced by encrypting a Resource Snapshot.  
-Base Stations **MUST** treat Envelopes as uninterpreted binary data and **MUST NOT** derive semantics, linkage, ordering, validity, or authorship from identifiers or payloads.
+Base Stations **MUST** treat Envelopes as uninterpreted binary data and **MUST NOT** derive semantics, linkage, ordering, validity, authorship, or lifecycle state from identifiers or payloads.
 
 ---
 
@@ -104,8 +107,8 @@ A Snapshot **MUST** consist of an ordered collection of **verifiable operations*
 - represent a CRDT operation suitable for deterministic merge, and  
 - be authorized according to the Resource’s role model.
 
-Interpretation, authorization, attribution, and merge semantics **MUST** be performed exclusively by Actors.  
-Base Stations **MUST NOT** interpret operations, roles, signatures, or identity bindings.
+Interpretation, authorization, attribution, revocation detection, acknowledgment tracking, and merge semantics **MUST** be performed exclusively by Actors.  
+Base Stations **MUST NOT** interpret operations, roles, signatures, identity bindings, acknowledgments, or revocation state.
 
 A Snapshot **MUST** be encrypted by an Actor to produce an Envelope.
 
@@ -113,12 +116,12 @@ A Snapshot **MUST** be encrypted by an Actor to produce an Envelope.
 
 ## Authority, Attribution, and Access *(Normative)*
 
-Actors **MUST** be authoritative over Resource state. All validation, merge semantics, conflict resolution, attribution, encryption, and decryption **MUST** occur at the Actor layer.
+Actors **MUST** be authoritative over Resource state. All validation, merge semantics, conflict resolution, attribution, acknowledgment evaluation, encryption, decryption, and revocation handling **MUST** occur at the Actor layer.
 
-Base Stations **MUST NOT** enforce state rules, resolve conflicts, attribute authorship, or reject data based on content.
+Base Stations **MUST NOT** enforce state rules, resolve conflicts, attribute authorship, track acknowledgments, or reject data based on content.
 
 Access **MUST** be capability-based. Possession of a valid Resource identifier and corresponding cryptographic material is sufficient to attempt access.  
-Base Stations **MUST** require protocol-defined authentication but **MUST NOT** gain semantic or attributional insight as a result.
+Base Stations **MUST** require protocol-defined authentication but **MUST NOT** gain semantic, attributional, or lifecycle insight as a result.
 
 Resource Snapshots **MAY** contain application-defined references to other Resources. Such semantics **MUST** remain invisible to Base Stations.
 
@@ -171,9 +174,10 @@ Once pinned, identity bindings **MUST** be used to verify future operations for 
 
 ### Impostor Resistance Guarantees
 
-An Actor **MUST** reject operations whose claimed Actor identity cannot be verified against the pinned identity key, even if the role signature is otherwise valid, for purposes of attribution and audit.
+An Actor **MUST** verify Actor identity signatures against pinned identity keys.  
+Failure of identity verification **MUST** be surfaced as an impostor signal.
 
-Failure of identity verification **MUST NOT** affect CRDT merge correctness but **MUST** be observable to higher layers as an impostor signal.
+Identity verification failure **MUST NOT** alter CRDT merge correctness but **MUST** affect attribution, auditing, and acknowledgment validity.
 
 ---
 
@@ -198,7 +202,64 @@ Signatures **MUST** be detached and cover all fields except other signatures. An
 Actors **MUST** verify role authorization, identity attribution, and causal consistency before merge.  
 Invalid operations **MUST** be excluded without affecting valid ones.
 
-Acknowledgment operations **MAY** be emitted and **MUST NOT** mutate state.
+---
+
+## Acknowledgments and Verifiable Garbage Collection *(Normative)*
+
+### Acknowledgment Emission
+
+Actors **MAY** emit **acknowledgment operations** (“acks”) after successfully merging operations into local authoritative state.
+
+An acknowledgment:
+
+- **MUST** be signed using the Actor Identity Key,  
+- **MUST** reference specific causal metadata being acknowledged,  
+- **MUST NOT** mutate Resource state.
+
+Actors **MUST NOT** emit acknowledgments for operations not yet merged locally.
+
+### Ack Verification
+
+Actors **MUST** verify acknowledgments against the pinned Actor Identity Public Key valid at the acknowledged causal point.  
+Invalid acknowledgments **MUST** be ignored.
+
+### Garbage Collection Constraint
+
+Local garbage collection or compaction **MAY** be performed **only** when:
+
+- all non-revoked Actors known in the authoritative ACL at the relevant causal point have emitted verifiable acknowledgments, and  
+- compaction preserves deterministic replay, attribution, and future merge correctness.
+
+If any required acknowledgment is missing, tombstones and historical operations **MUST** be retained.
+
+Garbage collection **MUST** be local, unilateral, and never coordinated by Base Stations.
+
+---
+
+## Revocation Enforcement and Mandatory Erasure *(Normative)*
+
+### Revocation Detection
+
+Actors **MUST** monitor authoritative merged state for changes to their own role assignments.
+
+### Mandatory Erasure
+
+Upon detecting that its own role for a Resource has transitioned to **Revoked**, a compliant Actor **MUST**, without user intervention:
+
+- irreversibly erase all decrypted state related to the Resource,  
+- erase all cryptographic keys, derived secrets, and identity bindings for that Resource,  
+- erase all cached Envelopes, operations, acknowledgments, and metadata enabling access,  
+- remove all references to the Resource identifier from local APIs.
+
+### Post-Revocation Behavior
+
+After erasure, the Actor **MUST**:
+
+- refuse all further interaction with the Resource,  
+- ignore incoming frames referencing the Resource, and  
+- permanently disable operation or acknowledgment emission for that Resource.
+
+Failure to enforce mandatory erasure **MUST** be considered non-conformant.
 
 ---
 
@@ -206,12 +267,10 @@ Acknowledgment operations **MAY** be emitted and **MUST NOT** mutate state.
 
 Resource state **MUST** be derived from the validated operation set.
 
-Given identical valid operation sets, all Actors **MUST** converge to identical authoritative state, independent of arrival order or transport behavior.
+Given identical valid operation sets, all Actors **MUST** converge to identical authoritative state, independent of arrival order, duplication, or transport behavior.
 
 Operations **MUST** be idempotent and replay-safe.  
-Garbage collection and compaction **MAY** be performed locally if equivalence and attribution verifiability are preserved.
-
-Base Stations **MUST NOT** participate in merge, validation, or attribution.
+Base Stations **MUST NOT** participate in merge, validation, acknowledgment handling, or revocation enforcement.
 
 ---
 
@@ -220,7 +279,7 @@ Base Stations **MUST NOT** participate in merge, validation, or attribution.
 - **Confidentiality:** Only authorized Actors can decrypt.  
 - **Integrity:** Modification or replay **MUST** be detectable.  
 - **Determinism:** Decryption yields exactly the encrypted Snapshot.  
-- **Non-Observability:** No semantic or attributional leakage beyond routing necessity.  
+- **Non-Observability:** No semantic, attributional, or lifecycle leakage beyond routing necessity.  
 - **Algorithm Agnosticism:** No specific algorithms are mandated.
 
 ---
@@ -233,7 +292,7 @@ This section defines how bytes move, not what they mean.
 
 - Payloads are opaque to Base Stations.  
 - Delivery may be lossy, duplicated, or reordered.  
-- Authority and attribution remain with Actors.
+- Authority, attribution, acknowledgment logic, and revocation remain with Actors.
 
 ### Framing
 
@@ -266,15 +325,9 @@ Base Stations **MUST NOT** attempt repair.
 
 ---
 
-## Non-Normative Walkthroughs
-
-*(Cold start, offline usage, lazy resolution, concurrent sync, multi-source asynchrony, and failure recovery are unchanged in meaning and emphasize the invariant: state evolves locally; synchronization is opportunistic.)*
-
----
-
 ## Security Considerations *(Non-Normative)*
 
-z-base assumes untrusted infrastructure, hostile networks, and potentially malicious peers. Confidentiality, integrity, authorization, and attribution are enforced end-to-end by Actors. Base Stations cannot forge, interpret, or falsely attribute state.
+z-base assumes untrusted infrastructure, hostile networks, and potentially malicious peers. Confidentiality, integrity, authorization, attribution, acknowledgment safety, and revocation enforcement are Actor-side responsibilities. Base Stations cannot forge, interpret, retain, or falsely attribute state.
 
 Metadata leakage is minimized but not eliminated. Compromised user agents are out of scope; recovery is delegated to higher layers.
 
@@ -284,11 +337,12 @@ Metadata leakage is minimized but not eliminated. Compromised user agents are ou
 
 Potential extensions include standardized sharing and delegation, automation Actors, public Resources, interoperable schemas, identity interop, advanced key lifecycle management, transport profiles, and formal verification.
 
-All extensions **MUST NOT** weaken actor authority, attribution guarantees, zero-knowledge properties, or offline-first operation.
+All extensions **MUST NOT** weaken actor authority, impostor resistance, acknowledgment safety, revocation guarantees, zero-knowledge properties, or offline-first operation.
 
 ---
 
 ## Closing Note
 
 z-base is intentionally small, strict, and composable at its core.  
+State evolves locally; trust does not.  
 Innovation is expected to occur at the edges, not by expanding the trusted center.
