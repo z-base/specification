@@ -4,7 +4,9 @@
 
 An **Actor** is a user-controlled, authoritative execution unit responsible for creating, validating, mutating, attributing, synchronizing, revoking, erasing, and cryptographically protecting application state. All semantic meaning, trust decisions, authorization, conflict resolution, and lifecycle enforcement occur exclusively inside the Actor. External systems—storage, transport, peers, and infrastructure—are treated as untrusted, opaque, and non-authoritative.
 
-This specification defines the **normative requirements** for an Actor implementation: its authority boundary, identity and key model, internal components, state lifecycle, merge semantics, synchronization behavior, revocation enforcement, and failure tolerance. The Actor is the sole locus of truth. Infrastructure merely moves bytes.
+An Actor is **fully asynchronous by design**. It exposes state immediately using a developer-defined schema with default values and incrementally becomes consistent as operations are discovered, received, validated, and merged. Applications interact with evolving state through an event-driven model; no Actor operation blocks on I/O or remote data.
+
+This specification defines the **normative requirements** for an Actor implementation: its authority boundary, identity and key model, internal components, asynchronous state realization model, event system, merge semantics, synchronization behavior, revocation enforcement, and failure tolerance. The Actor is the sole locus of truth. Infrastructure merely moves bytes.
 
 ---
 
@@ -35,14 +37,16 @@ An **Actor** is a software agent executing in a user-controlled environment that
 An Actor **MUST**:
 
 - create and mutate state locally,
+- expose state immediately using schema-defined defaults,
 - validate and authorize all operations it accepts,
 - attribute operations to cryptographic identities,
-- merge state deterministically,
+- merge state deterministically and asynchronously,
+- emit events as state advances,
 - enforce revocation and mandatory erasure,
 - encrypt, decrypt, and authenticate all persisted or transmitted state,
 - operate correctly without network connectivity.
 
-An Actor **MUST NOT** delegate semantic interpretation, authorization, attribution, merge logic, or revocation enforcement to any external system.
+An Actor **MUST NOT** delegate semantic interpretation, authorization, attribution, merge logic, revocation enforcement, or state realization timing to any external system.
 
 ---
 
@@ -52,10 +56,12 @@ The Actor defines a strict authority boundary.
 
 ### Inside the Boundary (Trusted)
 
-- state interpretation and validation  
+- schema interpretation and default state construction  
+- state validation and authorization  
 - cryptographic verification  
 - role and capability enforcement  
 - causal ordering and merge semantics  
+- asynchronous event emission  
 - acknowledgment logic  
 - revocation detection and enforcement  
 - garbage collection decisions  
@@ -95,57 +101,78 @@ Identity persistence **MUST NOT** depend on network availability.
 
 ---
 
+## Asynchronous State Model *(Normative)*
+
+### Schema-Defined Default State
+
+For each Resource, an Actor **MUST** be initialized with a **developer-defined schema** that declares:
+
+- the shape of state,
+- default values for all fields,
+- invariants enforced by the Actor.
+
+Upon access, the Actor **MUST** expose an **immediate default state view** derived solely from the schema, without waiting for storage, synchronization, or merge completion.
+
+### Incremental State Realization
+
+Authoritative state **MUST** advance only through validated merge of operations.  
+State **MUST** become progressively more complete as operations are discovered, received, validated, and merged.
+
+No consumer **MUST** be required to wait for “full state” availability.
+
+---
+
+## Asynchronous Event Engine *(Normative)*
+
+An Actor **MUST** include an **Asynchronous Event Engine** governing how state changes are surfaced.
+
+### Event Semantics
+
+- State changes **MUST** be communicated exclusively via asynchronous events.
+- Events **MUST** be emitted only after local validation and merge.
+- Events **MUST NOT** be emitted speculatively for unmerged operations.
+
+### Event Categories
+
+An Actor **MUST** be able to emit at least:
+
+- **State Advancement Events** — authoritative state changes after merge  
+- **Operation Rejection Events** — invalid or unauthorized operations  
+- **Conflict or Correction Events** — causal reconciliation signals  
+- **Revocation Events** — role loss and enforced erasure  
+- **Error Events** — structural or cryptographic failures  
+
+### Non-Blocking Guarantees
+
+- Event emission **MUST** be non-blocking.
+- State access **MUST** never block on I/O, synchronization, or merge.
+- UI or application layers **MAY** subscribe to events and update incrementally.
+
+---
+
 ## Internal Component Model *(Normative)*
 
-An Actor implementation **MUST** be decomposable into the following **distinguishable components**.  
-Each component represents a stable responsibility boundary and **MUST** be specifiable independently.  
-Separate specifications **SHALL** define normative requirements for each component listed below.
+An Actor implementation **MUST** be decomposable into the following **distinguishable components**, each specifiable independently.
 
 ### Required Components
 
-- **Identity & Key Manager**  
-  Manages Actor Identity Keys, role keys, rotation, secure persistence, and in-use lifecycle boundaries.
+- **Identity & Key Manager**
+- **Credential & Capability Manager (Discoverable Credentials)**
+- **Offline Storage Engine**
+- **Resource Manager**
+- **Operation Engine**
+- **Merge Engine**
+- **Asynchronous Event Engine**
+- **Revocation Monitor & Enforcer**
+- **Acknowledgment Engine**
+- **Garbage Collector / Compactor**
+- **Base Station Client**
+- **Peer & Local Broadcast Channel**
+- **Synchronization Controller**
+- **Cryptographic Envelope Engine**
+- **Policy & Validation Layer**
 
-- **Credential & Capability Manager (Discoverable Credentials)**  
-  Resolves Resource access material, capabilities, and cryptographic possession proofs without semantic leakage.
-
-- **Offline Storage Engine**  
-  Persists encrypted Envelopes, operation logs, acknowledgments, and metadata locally; supports crash recovery and replay.
-
-- **Resource Manager**  
-  Tracks Resource identifiers, local replicas, authorization state, and lifecycle transitions (active, revoked, erased).
-
-- **Operation Engine**  
-  Constructs, validates, signs, verifies, and applies CRDT operations with full causal metadata.
-
-- **Merge Engine**  
-  Deterministically merges validated operations into authoritative state; enforces idempotence and convergence.
-
-- **Revocation Monitor & Enforcer**  
-  Detects role revocation and performs mandatory erasure and access shutdown without user intervention.
-
-- **Acknowledgment Engine**  
-  Emits, verifies, and tracks acknowledgments bound to causal state and Actor identity.
-
-- **Garbage Collector / Compactor**  
-  Performs local history compaction subject to acknowledgment and merge-safety constraints.
-
-- **Base Station Client**  
-  Handles authenticated interaction with non-authoritative infrastructure for opaque relay and persistence.
-
-- **Peer & Local Broadcast Channel**  
-  Enables offline and local-network synchronization (e.g. BroadcastChannel, device-local transports).
-
-- **Synchronization Controller**  
-  Orchestrates snapshot and delta exchange, retry, resynchronization, and failure recovery.
-
-- **Cryptographic Envelope Engine**  
-  Encrypts and decrypts Resource Snapshots; enforces confidentiality, integrity, and non-observability.
-
-- **Policy & Validation Layer**  
-  Applies application-defined invariants, authorization rules, and structural checks prior to merge.
-
-Additional components **MAY** exist but **MUST NOT** weaken Actor authority, offline-first operation, revocation guarantees, or deterministic merge semantics.
+Additional components **MAY** exist but **MUST NOT** weaken Actor authority, asynchrony, offline-first behavior, revocation guarantees, or deterministic merge semantics.
 
 ---
 
@@ -153,15 +180,10 @@ Additional components **MAY** exist but **MUST NOT** weaken Actor authority, off
 
 An Actor **MUST** maintain its own local replica of all state it participates in.
 
-Local state is **authoritative for that Actor**.
+Local merged state is **authoritative for that Actor**.  
+Default schema state is **authoritative until superseded by merged operations**.
 
-Remote state:
-
-- **MUST NOT** override local validation rules,  
-- **MUST NOT** be trusted for attribution or authorization,  
-- **MAY** be used as merge input only after verification.
-
-Actors **MUST** assume remote data may be delayed, duplicated, reordered, incomplete, or malicious.
+Remote data **MAY** influence state only after validation and merge.
 
 ---
 
@@ -169,16 +191,11 @@ Actors **MUST** assume remote data may be delayed, duplicated, reordered, incomp
 
 An Actor **MAY** produce an operation only if:
 
-- the Actor holds valid authorization at the causal point,  
-- the operation is valid under local state rules,  
+- authorization is valid at the causal point,
+- the operation satisfies schema and policy rules,
 - causal dependencies are satisfied.
 
-Every operation **MUST** be:
-
-- authorized via role or capability keys,  
-- attributable via the Actor Identity Key,  
-- causally referenced,  
-- replay-safe and idempotent.
+Operation production **MUST NOT** directly mutate authoritative state.
 
 ---
 
@@ -186,125 +203,61 @@ Every operation **MUST** be:
 
 An Actor **MUST** validate every incoming operation prior to merge.
 
-Validation **MUST** include:
-
-- authorization at the causal point,  
-- identity attribution verification,  
-- structural and semantic validity,  
-- CRDT correctness,  
-- revocation checks.
-
-Invalid operations **MUST** be ignored without side effects.
+Invalid operations **MUST** be rejected silently or via explicit events, without side effects.
 
 ---
 
 ## Deterministic Merge *(Normative)*
 
-An Actor **MUST** merge state deterministically.
+Given identical valid operation sets, all conforming Actors **MUST** converge to identical authoritative state.
 
-Given identical sets of valid operations, all conforming Actors **MUST** converge to identical authoritative state, independent of:
-
-- arrival order,  
-- duplication,  
-- transport medium,  
-- timing.
-
-Merge logic **MUST** be associative, commutative, and idempotent.
+Merge **MUST** be associative, commutative, idempotent, and independent of arrival order.
 
 ---
 
 ## Offline-First Operation *(Normative)*
 
-An Actor **MUST** function correctly without network connectivity.
+An Actor **MUST** be fully functional offline.
 
-This includes:
-
-- reading state,  
-- producing operations,  
-- validating history,  
-- enforcing authorization,  
-- detecting revocation,  
-- making garbage collection decisions.
-
-Network availability **MAY** improve convergence speed but **MUST NOT** be required for correctness.
+Asynchrony **MUST NOT** be disabled by lack of connectivity.
 
 ---
 
 ## Synchronization Behavior *(Normative)*
 
-Actors synchronize opportunistically.
+Synchronization is opportunistic, unordered, lossy, and untrusted.
 
-An Actor **MAY** publish, request, relay, or receive encrypted state via any transport.
-
-An Actor **MUST NOT** assume:
-
-- reliable delivery,  
-- ordered delivery,  
-- unique delivery,  
-- honest intermediaries.
-
-All synchronization failures **MUST** be recoverable via replay or resynchronization.
+Actors **MUST** recover solely through replay and merge.
 
 ---
 
 ## Revocation Enforcement *(Normative)*
 
-An Actor **MUST** continuously evaluate its own authorization state.
-
-Upon detecting revocation of its role or capability for a Resource, the Actor **MUST**, without user intervention:
-
-- immediately cease all interaction with the Resource,  
-- irreversibly erase decrypted state and derived secrets,  
-- erase all keys and metadata enabling access,  
-- refuse further operation or acknowledgment emission.
-
-Failure to enforce revocation **MUST** be considered non-conformant.
+Upon detecting revocation, an Actor **MUST** immediately and irreversibly erase all access and state for the affected Resource and emit a revocation event.
 
 ---
 
 ## Acknowledgment Semantics *(Normative)*
 
-An Actor **MAY** emit acknowledgments after successful local verification and merge.
-
-An acknowledgment:
-
-- **MUST** be non-mutating,  
-- **MUST** be signed by the Actor Identity Key,  
-- **MUST** reference specific causal state.
-
-Actors **MUST NOT** acknowledge unverified or unmerged state.
+Acknowledgments **MUST** be non-mutating, identity-signed, and emitted only after merge.
 
 ---
 
 ## Garbage Collection *(Normative)*
 
-An Actor **MAY** compact or garbage-collect local history only when:
-
-- application-defined acknowledgment conditions are met,  
-- future deterministic merge remains possible,  
-- attribution and revocation guarantees are preserved.
-
-Garbage collection **MUST** be local, unilateral, and never infrastructure-coordinated.
+Garbage collection **MUST** preserve deterministic replay, attribution, and revocation guarantees and **MUST** be local.
 
 ---
 
 ## Failure Model *(Normative)*
 
-An Actor **MUST** tolerate:
-
-- crashes and restarts,  
-- partial or stale state,  
-- duplicated inputs,  
-- malicious peers,  
-- hostile infrastructure.
-
-Failures **MUST NOT** result in silent corruption, authority escalation, or unverifiable state.
+Actors **MUST** tolerate crashes, restarts, partial state, duplication, malicious peers, and hostile infrastructure without authority escalation or silent corruption.
 
 ---
 
 ## Security Posture *(Non-Normative)*
 
-The Actor model assumes untrusted infrastructure and imperfect peers. Security arises from explicit cryptographic verification, deterministic behavior, and strict authority boundaries—not from trusted environments or central coordination.
+Security emerges from local authority, explicit verification, deterministic merge, and asynchronous state realization—not from trusted infrastructure.
 
 ---
 
@@ -312,4 +265,4 @@ The Actor model assumes untrusted infrastructure and imperfect peers. Security a
 
 An Actor is not a client.  
 An Actor is not a node.  
-An Actor is a sovereign executor of truth, bounded only by the keys it holds and the rules it enforces.
+An Actor is an asynchronous, sovereign executor of truth, bounded only by the keys it holds and the rules it enforces.
