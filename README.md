@@ -102,7 +102,7 @@ Base Stations **MUST NOT** enforce state rules, resolve conflicts, or reject dat
 Resource access **MUST** be capability-based. Possession of a valid Resource identifier and corresponding cryptographic material is sufficient to attempt access.  
 Base Stations **MUST** require protocol-defined authentication steps but **MUST NOT** gain knowledge of Resource semantics as a result.
 
-Resource Snapshots **MAY** contain application-defined semantic structures (including aliases, labels, or navigation data) that reference other Resources by identifier.
+Resource Snapshots **MAY** contain application-defined semantic structures (including aliases, labels, or navigation data) that reference other Resources by identifier.  
 These semantics **MUST** be visible only to Actors after decryption and **MUST NOT** be observable, derivable, or enforceable by Base Stations.
 
 ## Actor Roles and Authorization Model *(Normative)*
@@ -189,3 +189,89 @@ Base Stations **MUST NOT** interpret acknowledgments as state changes.
 Key rotation **MAY** be supported as an exceptional recovery mechanism.  
 Rotated or revoked keys **MUST NOT** be used to sign new operations after merge.  
 Previously signed operations remain valid when verified against historical ACL state.
+
+## CRDT Merge Semantics *(Normative)*
+
+z-base defines **Actor-side deterministic merge semantics** for Resource state based on Conflict-Free Replicated Data Types (CRDTs). Merge behavior **MUST** ensure that independent Actor replicas converge to equivalent authoritative state given the same set of valid operations.
+
+### Operation Set Model
+
+Resource state **MUST** be derived from the set of validated operations contained in the Resource Snapshot.  
+Actors **MUST** treat the operation set as an append-only logical history, subject to authorization and validation rules.
+
+Operations **MUST NOT** be destructively overwritten or reordered in a way that affects merge determinism.
+
+### Deterministic Merge Requirement
+
+Given two Actor replicas holding operation sets *A* and *B* for the same Resource, merging *(A ∪ B)* **MUST** yield identical authoritative state for all Actors.
+
+Merge **MUST NOT** depend on arrival order, network timing, or Base Station behavior.
+
+### Validation Before Merge
+
+Before participating in merge, each operation **MUST** be validated for cryptographic correctness, authorization, and CRDT conformance.
+
+Invalid operations **MUST** be excluded and **MUST NOT** affect the merge outcome of valid operations.
+
+### CRDT Field Semantics
+
+Each mutable field in a Resource **MUST** declare a CRDT type that defines its merge behavior.  
+Actors **MUST** apply operations strictly according to the semantics of the declared CRDT type.
+
+Base Stations **MUST NOT** interpret CRDT types or operation semantics.
+
+### Causality and Ordering
+
+Operations **MUST** include causal metadata sufficient to establish a partial order.
+
+Actors **MAY** use this metadata for optimization or presentation but **MUST NOT** rely on total ordering guarantees.
+
+Concurrent operations **MUST** be resolved exclusively according to CRDT semantics.
+
+### Idempotence and Replay Safety
+
+Applying the same valid operation multiple times **MUST NOT** alter state beyond the first application.
+
+Actors **MUST** be able to reconstruct authoritative state by replaying the validated operation set from an initial empty state.
+
+### Garbage Collection and Compaction *(Optional)*
+
+Actors **MAY** perform local compaction or garbage collection provided the resulting state is observationally equivalent and future validation remains possible.
+
+Compaction **MUST NOT** be required for correctness and **MUST NOT** be coordinated or enforced by Base Stations.
+
+### Base Station Constraints
+
+Base Stations **MUST NOT** participate in merge decisions, conflict resolution, causality tracking, or validation.  
+They **MUST NOT** reject, reorder, or modify operations based on semantic content.
+
+## Envelope Cryptographic Properties *(Normative)*
+
+An **Envelope** represents the encrypted form of a Resource Snapshot.
+
+### Confidentiality
+
+Envelopes **MUST** provide confidentiality such that no party other than authorized Actors can recover plaintext Resource Snapshots.  
+Base Stations **MUST NOT** be able to decrypt or meaningfully distinguish Envelope contents.
+
+### Integrity and Authenticity
+
+Encryption **MUST** provide integrity protection over the entire Resource Snapshot.  
+Actors **MUST** detect any modification, truncation, or replay of encrypted content prior to decryption acceptance.
+
+### Deterministic Semantics
+
+Encryption **MUST NOT** alter the semantic meaning of the Resource Snapshot.  
+Decryption **MUST** yield exactly the Snapshot that was encrypted by the producing Actor.
+
+### Non-Observability
+
+Envelope structure, size, and metadata **MUST NOT** expose Resource semantics beyond what is strictly necessary for transport and routing.  
+Base Stations **MUST NOT** derive relationships, roles, or state meaning from Envelopes.
+
+### Algorithm Agnosticism
+
+This specification does not mandate specific cryptographic algorithms.  
+Implementations **MUST** use authenticated encryption schemes suitable for long-term confidentiality and integrity.
+
+Algorithm selection **MAY** evolve without changing Resource or Snapshot semantics.
