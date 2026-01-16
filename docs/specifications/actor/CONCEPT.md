@@ -1,3 +1,5 @@
+# z-base/docs/specifications/actor/CONCEPT.md
+
 # Actor — Concept Specification
 
 ## Abstract
