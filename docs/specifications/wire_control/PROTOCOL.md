@@ -7,8 +7,8 @@ This protocol is **normative for wire behavior** and **authoritative only over d
 
 It is the **single shared contract** referenced by:
 
-- `base_station/components/ISOLATE.md`
-- `actor/components/BASE_STATION_CLIENT.md`
+- `base_station/components/STATION.md`
+- `actor/components/STATION_CLIENT.md`
 
 RFC 2119 / 8174 keywords apply.
 
@@ -259,8 +259,8 @@ An implementation conforms **iff** it:
 
 ## Required Cross-References
 
-- Base Station behavior: `base_station/components/ISOLATE.md`
-- Actor behavior: `actor/components/BASE_STATION_CLIENT.md`
+- Base Station behavior: `base_station/components/STATION.md`
+- Actor behavior: `actor/components/STATION_CLIENT.md`
 
 Those documents **MUST** reference this file and **MUST NOT** redefine wire semantics.
 
