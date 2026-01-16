@@ -1,5 +1,3 @@
-
-```markdown
 # base_station/components/STATION.md
 
 ## Status
@@ -219,4 +217,3 @@ The Base Station is **infrastructure**, not logic.
 It remembers bytes, forwards bytes, and forgets meaning.
 
 Authority lives elsewhere.
-```
