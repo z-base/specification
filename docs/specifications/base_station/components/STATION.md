@@ -1,4 +1,4 @@
-# base_station/components/STATION.md
+# z-base/docs/specifications/actor/components/STATION_CLIENT.md
 
 ## Status
 
