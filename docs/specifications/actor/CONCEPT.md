@@ -1,30 +1,31 @@
-# z-base/docs/specifications/actor/CONCEPT.md
-
 # Actor — Concept Specification
 
 ## Abstract
 
-An **Actor** is a user-controlled, authoritative execution unit responsible for creating, validating, mutating, attributing, synchronizing, revoking, erasing, and cryptographically protecting application state. All semantic meaning, trust decisions, authorization, conflict resolution, and lifecycle enforcement occur exclusively inside the Actor. External systems—storage, transport, peers, and infrastructure—are treated as untrusted, opaque, and non-authoritative.
+An **Actor** is a user-controlled, authoritative execution unit responsible for creating, validating, mutating, attributing, synchronizing, revoking, erasing, and cryptographically protecting application state. All semantic meaning, trust decisions, authorization, conflict resolution, revocation enforcement, and lifecycle guarantees occur exclusively within the Actor.
 
-An Actor is **fully asynchronous by design**. It exposes state immediately using a developer-defined schema with default values and incrementally becomes consistent as operations are discovered, received, validated, and merged. Applications interact with evolving state through an event-driven model; no Actor operation blocks on I/O or remote data.
+External systems—including storage, transport, peers, and infrastructure—are treated as untrusted, opaque, and non-authoritative.
 
-This specification defines the **normative requirements** for an Actor implementation: its authority boundary, identity and key model, internal components, asynchronous state realization model, event system, merge semantics, synchronization behavior, revocation enforcement, and failure tolerance. The Actor is the sole locus of truth. Infrastructure merely moves bytes.
+Actors are **fully asynchronous by design**. An Actor exposes state immediately using a developer-defined schema with default values and incrementally converges as operations are discovered, received, validated, and merged. No Actor operation blocks on network I/O or remote data.
+
+This document defines the **normative requirements** for Actor implementations.
 
 ---
 
-## Status of This Document
+## Status
 
-This document is a **Draft Specification** for the **Actor Concept**, version **1.0.0**, edited on **16 January 2026**.  
-It is provided for review and experimentation and **must not be considered stable or complete**.  
+This document is a **Draft Specification**, version **1.0.0**, edited **16 January 2026**.  
+It is provided for review and experimentation and **MUST NOT** be considered stable or complete.
+
 Normative requirements and component boundaries may change without notice.
 
 ---
 
 ## Conformance
 
-This specification defines requirements for **Actor Implementations**.
+This specification defines requirements for **Actor implementations**.
 
-An implementation **conforms** if and only if it satisfies all **normative** requirements defined herein.
+An implementation conforms **iff** it satisfies all **normative** requirements defined herein.
 
 The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**, and **MAY** are to be interpreted as described in RFC 2119 and RFC 8174.
 
@@ -34,7 +35,7 @@ Sections marked *Non-Normative* are informational and **do not affect conformanc
 
 ## Actor Definition *(Normative)*
 
-An **Actor** is a software agent executing in a user-controlled environment that is **authoritative over state**.
+An Actor is a software agent executing in a user-controlled environment that is **authoritative over state**.
 
 An Actor **MUST**:
 
@@ -77,7 +78,7 @@ The Actor defines a strict authority boundary.
 - durability  
 - peers  
 
-An Actor **MUST** treat all externally supplied data as hostile until fully verified.
+All externally supplied data **MUST** be treated as hostile until fully verified.
 
 ---
 
@@ -107,26 +108,26 @@ Identity persistence **MUST NOT** depend on network availability.
 
 ### Schema-Defined Default State
 
-For each Resource, an Actor **MUST** be initialized with a **developer-defined schema** that declares:
+For each Resource, an Actor **MUST** be initialized with a developer-defined schema that declares:
 
 - the shape of state,
 - default values for all fields,
 - invariants enforced by the Actor.
 
-Upon access, the Actor **MUST** expose an **immediate default state view** derived solely from the schema, without waiting for storage, synchronization, or merge completion.
+Upon access, the Actor **MUST** expose an immediate default state view derived solely from the schema, without waiting for storage, synchronization, or merge completion.
 
 ### Incremental State Realization
 
 Authoritative state **MUST** advance only through validated merge of operations.  
 State **MUST** become progressively more complete as operations are discovered, received, validated, and merged.
 
-No consumer **MUST** be required to wait for “full state” availability.
+No consumer **MUST** be required to wait for full state availability.
 
 ---
 
 ## Asynchronous Event Engine *(Normative)*
 
-An Actor **MUST** include an **Asynchronous Event Engine** governing how state changes are surfaced.
+An Actor **MUST** include an asynchronous event engine governing how state changes are surfaced.
 
 ### Event Semantics
 
@@ -148,31 +149,33 @@ An Actor **MUST** be able to emit at least:
 
 - Event emission **MUST** be non-blocking.
 - State access **MUST** never block on I/O, synchronization, or merge.
-- UI or application layers **MAY** subscribe to events and update incrementally.
+- Application layers **MAY** subscribe to events and update incrementally.
 
 ---
 
 ## Internal Component Model *(Normative)*
 
-An Actor implementation **MUST** be decomposable into the following **distinguishable components**, each specifiable independently.
+An Actor implementation **MUST** be decomposable into the following distinguishable components:
 
-### Required Components
+- Identity & Key Manager  
+- Credential & Capability Manager  
+- Offline Storage Engine  
+- Resource Manager  
+- Operation Engine  
+- Merge Engine  
+- Asynchronous Event Engine  
+- Revocation Monitor & Enforcer  
+- Acknowledgment Engine  
+- Garbage Collector / Compactor  
+- **Station Client**  
+- Peer & Local Broadcast Channel  
+- Synchronization Controller  
+- Cryptographic Envelope Engine  
+- Policy & Validation Layer  
 
-- **Identity & Key Manager**
-- **Credential & Capability Manager (Discoverable Credentials)**
-- **Offline Storage Engine**
-- **Resource Manager**
-- **Operation Engine**
-- **Merge Engine**
-- **Asynchronous Event Engine**
-- **Revocation Monitor & Enforcer**
-- **Acknowledgment Engine**
-- **Garbage Collector / Compactor**
-- **Base Station Client**
-- **Peer & Local Broadcast Channel**
-- **Synchronization Controller**
-- **Cryptographic Envelope Engine**
-- **Policy & Validation Layer**
+The Station Client component **MUST** conform to:
+
+- [Station Client — Component Specification](components/STATION_CLIENT.md)
 
 Additional components **MAY** exist but **MUST NOT** weaken Actor authority, asynchrony, offline-first behavior, revocation guarantees, or deterministic merge semantics.
 
@@ -182,46 +185,10 @@ Additional components **MAY** exist but **MUST NOT** weaken Actor authority, asy
 
 An Actor **MUST** maintain its own local replica of all state it participates in.
 
-Local merged state is **authoritative for that Actor**.  
-Default schema state is **authoritative until superseded by merged operations**.
+Local merged state is authoritative for that Actor.  
+Schema-defined default state is authoritative until superseded by merged operations.
 
 Remote data **MAY** influence state only after validation and merge.
-
----
-
-## Operation Production *(Normative)*
-
-An Actor **MAY** produce an operation only if:
-
-- authorization is valid at the causal point,
-- the operation satisfies schema and policy rules,
-- causal dependencies are satisfied.
-
-Operation production **MUST NOT** directly mutate authoritative state.
-
----
-
-## Operation Acceptance *(Normative)*
-
-An Actor **MUST** validate every incoming operation prior to merge.
-
-Invalid operations **MUST** be rejected silently or via explicit events, without side effects.
-
----
-
-## Deterministic Merge *(Normative)*
-
-Given identical valid operation sets, all conforming Actors **MUST** converge to identical authoritative state.
-
-Merge **MUST** be associative, commutative, idempotent, and independent of arrival order.
-
----
-
-## Offline-First Operation *(Normative)*
-
-An Actor **MUST** be fully functional offline.
-
-Asynchrony **MUST NOT** be disabled by lack of connectivity.
 
 ---
 
@@ -229,7 +196,7 @@ Asynchrony **MUST NOT** be disabled by lack of connectivity.
 
 Synchronization is opportunistic, unordered, lossy, and untrusted.
 
-Actors **MUST** recover solely through replay and merge.
+Actors **MUST** recover solely through replay and deterministic merge.
 
 ---
 
@@ -239,32 +206,13 @@ Upon detecting revocation, an Actor **MUST** immediately and irreversibly erase 
 
 ---
 
-## Acknowledgment Semantics *(Normative)*
-
-Acknowledgments **MUST** be non-mutating, identity-signed, and emitted only after merge.
-
----
-
-## Garbage Collection *(Normative)*
-
-Garbage collection **MUST** preserve deterministic replay, attribution, and revocation guarantees and **MUST** be local.
-
----
-
 ## Failure Model *(Normative)*
 
 Actors **MUST** tolerate crashes, restarts, partial state, duplication, malicious peers, and hostile infrastructure without authority escalation or silent corruption.
 
 ---
 
-## Security Posture *(Non-Normative)*
-
-Security emerges from local authority, explicit verification, deterministic merge, and asynchronous state realization—not from trusted infrastructure.
-
----
-
 ## Closing Principle *(Non-Normative)*
 
-An Actor is not a client.  
-An Actor is not a node.  
-An Actor is an asynchronous, sovereign executor of truth, bounded only by the keys it holds and the rules it enforces.
+An Actor is authoritative by construction.  
+Infrastructure provides transport, not truth.
