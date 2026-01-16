@@ -1,140 +1,143 @@
-# z-base/docs/specifications/actor/components/STATION_CLIENT.md
+# Base Station Core — Component Specification
 
 ## Status
 
-This document defines the **z-base Base Station (Per-Resource Stateful Core)**.
+This document defines the **per-Resource Base Station Core** component.
 
-It specifies the **normative responsibilities and prohibitions** of a Base Station instance serving **exactly one Resource**.  
-It is authoritative **only over wire enforcement, persistence of opaque Snapshots, and relay obligations**.
+It specifies the **normative responsibilities, constraints, and prohibitions** of a Base Station instance serving **exactly one Resource**.
 
-This component **MUST** implement `wire_control/PROTOCOL.md` exactly and **MUST NOT** introduce additional semantics.
+This component **MUST** implement the wire-level behavior defined in:
 
-RFC 2119 / 8174 keywords apply.
+- [Wire Control Protocol](../../wire_control/PROTOCOL.md)
+
+and **MUST** conform to:
+
+- [Base Station — Concept Specification](../CONCEPT.md)
+
+RFC 2119 and RFC 8174 keywords apply.
 
 ---
 
 ## Role Definition
 
-A **Base Station** is a non-authoritative, per-Resource execution unit that:
+The **Base Station Core** is a per-Resource, stateful infrastructure component that:
 
-- verifies **possession** of Resource-bound cryptographic material,
-- maintains a verified peer set,
-- persists the **latest opaque Snapshot**,
-- relays **opaque Delta and Snapshot frames**.
+- performs possession-based verification,
+- maintains a verified peer connection set,
+- persists the latest opaque Resource Snapshot,
+- relays opaque Snapshot and Delta frames.
 
-A Base Station:
+The Base Station Core:
 
-- has **zero semantic awareness**,
+- has **no semantic awareness**,
 - has **no authority over state correctness**,
 - is **not an Actor**.
 
 ---
 
-## Resource Scope (Normative)
+## Resource Scope *(Normative)*
 
-- A Base Station **MUST** serve **exactly one Resource identifier**.
-- All connections, frames, and persistence handled by the Station **MUST** be scoped to that Resource.
+- The Base Station Core **MUST** serve **exactly one Resource identifier**.
+- All connections, frames, persistence, and in-memory state **MUST** be scoped to that Resource.
 - Cross-Resource routing, persistence, or peer awareness is **non-conformant**.
 
 ---
 
-## Protocol Compliance (Normative)
+## Protocol Compliance *(Normative)*
 
-The Base Station **MUST** implement:
+The Base Station Core **MUST** implement the Wire Control Protocol exactly as defined in:
 
-- Frame envelope, versioning, and frame code law,
-- Connection phases and verification gating,
-- Relay and persistence obligations,
+- [Wire Control Protocol](../../wire_control/PROTOCOL.md)
 
-exactly as defined in:
+Including, but not limited to:
 
-```
-
-wire_control/PROTOCOL.md
-
-```
+- frame envelope and version enforcement,
+- frame code space law,
+- connection phases and verification gating,
+- relay and persistence obligations.
 
 Any deviation is **non-conformant**.
 
 ---
 
-## Connection Handling
+## Connection Handling *(Normative)*
 
 ### Unverified Phase
 
-Upon connection establishment, the Station **MUST**:
+Upon connection establishment, the Base Station Core **MUST**:
 
 1. Immediately emit `AssertChallenge (0x01)`.
-2. Reject or close the connection if any frame other than `ProvePossession (0x21)` is received.
+2. Reject or terminate the connection if any frame other than `ProvePossession (0x21)` is received.
 
-No frames **MAY** be relayed or persisted during this phase.
+No Snapshot or Delta frames **MAY** be persisted or relayed during this phase.
 
 ---
 
 ### Verification Phase
 
-The Station **MUST**:
+The Base Station Core **MUST**:
 
-- verify proof of possession without inspecting payload meaning,
+- verify proof of possession of Resource-bound cryptographic material,
+- perform verification without inspecting payload meaning,
 - treat verification strictly as a **gating mechanism**, not identity attribution.
 
-On failure, the connection **MUST** be terminated.
+On verification failure, the connection **MUST** be terminated.
 
 ---
 
 ### Verified Session
 
-Upon successful verification, the Station **MUST**:
+Upon successful verification, the Base Station Core **MUST**:
 
 1. Add the connection to the verified peer set.
 2. **Immediately offer the persisted Snapshot**, if one exists, via `OfferSnapshot (0x41)`.
-3. Begin concurrent relay of Deltas without ordering guarantees.
+3. Begin concurrent relay of Delta frames without ordering guarantees.
 
 Verification **MUST NOT** be treated as a synchronization barrier.
 
 ---
 
-## Snapshot Responsibilities (Normative)
+## Snapshot Responsibilities *(Normative)*
 
-### Persistence
+### Snapshot Persistence
 
-- The Station **MUST** persist only frames received via `SubmitSnapshot (0x22)`.
-- Persistence **MUST** be opaque and byte-for-byte.
-- Only the **latest Snapshot** is retained.
-- Persistence **MUST** survive restarts, eviction, or hibernation.
+- The Base Station Core **MUST** persist only frames received via `SubmitSnapshot (0x22)`.
+- Persistence **MUST** be byte-for-byte opaque.
+- Only the **latest Snapshot** **MUST** be retained.
+- Persisted Snapshots **MUST** survive restart, eviction, or hibernation.
 
-The Station **MUST NOT**:
+The Base Station Core **MUST NOT**:
 
 - merge Snapshots,
-- validate contents,
-- infer causality or authorship.
+- validate Snapshot contents,
+- infer causality, authorship, or lifecycle state.
 
 ---
 
 ### Snapshot Offering
 
-The Station **MUST**:
+The Base Station Core **MUST**:
 
 - automatically send `OfferSnapshot (0x41)` after verification if a Snapshot exists,
 - respond to `RequestSnapshot (0x24)` with `OfferSnapshot (0x41)` when possible.
 
-The Station **MUST NOT** require explicit coordination or readiness signals.
+The Base Station Core **MUST NOT** require explicit readiness signals or coordination.
 
 ---
 
-## Delta Responsibilities (Normative)
+## Delta Responsibilities *(Normative)*
 
-- The Station **MUST NOT** persist Deltas.
-- Upon receiving `SubmitDelta (0x23)`, the Station **MUST** relay the payload to all verified peers except the sender.
+- Delta payloads **MUST NOT** be persisted.
+- Upon receiving `SubmitDelta (0x23)`, the Base Station Core **MUST** relay the payload to all verified peers except the sender.
 - Delivery **MAY** be duplicated, reordered, or dropped.
 
-The Station **MUST NOT** attempt replay protection, acknowledgment tracking, or ordering.
+The Base Station Core **MUST NOT** attempt replay protection, acknowledgment tracking, or ordering enforcement.
 
 ---
 
-## Relay Semantics
+## Relay Semantics *(Normative)*
 
-For all relayed frames, the Station **MUST**:
+For all relayed frames, the Base Station Core **MUST**:
 
 - preserve payload bytes exactly,
 - avoid reflection to the sender,
@@ -143,49 +146,48 @@ For all relayed frames, the Station **MUST**:
 
 ---
 
-## Failure and Restart Model
+## Failure and Restart Model *(Normative)*
 
-The Station **MUST** tolerate:
+The Base Station Core **MUST** tolerate:
 
 - process restarts,
 - connection churn,
 - duplicate frames,
-- partial relay.
+- partial relay and reordering.
 
-On restart, the Station **MUST**:
+On restart, the Base Station Core **MUST**:
 
 - restore the latest persisted Snapshot into memory,
 - resume normal protocol behavior.
 
-Correctness is preserved because the Station is non-authoritative.
+Correctness is preserved because the Base Station Core is non-authoritative.
 
 ---
 
-## Security and Isolation
+## Security and Isolation *(Normative)*
 
-The Station **MUST** ensure:
+The Base Station Core **MUST** ensure:
 
 - isolation between Resources,
 - isolation between verified and unverified connections,
-- that failure or overload of one Resource **MUST NOT** cascade to others.
+- that overload or failure of one Resource **MUST NOT** cascade to others.
 
-The Station **MUST NOT**:
+The Base Station Core **MUST NOT**:
 
 - log Snapshot or Delta payloads,
-- derive meaning from identifiers or payloads,
-- attribute identity beyond possession gating.
+- derive semantic meaning from identifiers or payloads,
+- attribute Actor identity beyond possession gating.
 
 ---
 
-## Explicit Non-Goals (Normative)
+## Explicit Non-Goals *(Normative)*
 
-The Station **MUST NOT**:
+The Base Station Core **MUST NOT**:
 
 - validate or merge state,
 - enforce authorization or roles,
 - track acknowledgments,
 - detect or enforce revocation,
-- infer Actor identity,
 - act as a source of truth.
 
 Any such behavior is **non-conformant**.
@@ -194,9 +196,9 @@ Any such behavior is **non-conformant**.
 
 ## Conformance
 
-A Base Station implementation conforms **iff** it:
+A Base Station Core implementation conforms **iff** it:
 
-- fully implements `wire_control/PROTOCOL.md`,
+- fully implements the Wire Control Protocol,
 - enforces strict per-Resource isolation,
 - persists only opaque Snapshots,
 - relays frames without semantic interpretation,
@@ -204,16 +206,7 @@ A Base Station implementation conforms **iff** it:
 
 ---
 
-## Cross-Reference
+## Closing Statement *(Non-Normative)*
 
-- Wire behavior: `wire_control/PROTOCOL.md`
-- Client behavior: `actor/components/STATION_CLIENT.md`
-
----
-
-## Closing Principle
-
-The Base Station is **infrastructure**, not logic.  
-It remembers bytes, forwards bytes, and forgets meaning.
-
-Authority lives elsewhere.
+The Base Station Core enforces wire discipline and byte persistence only.  
+All semantic authority exists above this component.
